@@ -14,7 +14,6 @@
       --primary:#155eef;
       --danger:#d92d20;
       --border:#d0d5dd;
-      --soft:#f8fafc;
     }
     * { box-sizing: border-box; }
     [hidden] { display: none !important; }
@@ -62,76 +61,44 @@
     .manual .btn { width: auto; }
     .error { color: var(--danger); min-height: 20px; font-size: 13px; margin-top: 10px; }
     .small { font-size: 12px; }
-    .setup {
-      margin: 14px 0;
-      padding: 14px;
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      background: var(--soft);
-    }
-    .setup h2 { margin: 0 0 7px; font-size: 17px; }
-    .setup p { margin: 0 0 10px; font-size: 13px; }
-    .setup-row { display: grid; gap: 8px; }
-    .current-target {
-      overflow-wrap: anywhere;
-      font-size: 11px;
-      color: var(--muted);
-      margin-top: 10px;
-    }
   </style>
 </head>
 <body>
   <main class="card">
     <h1>Camera QR Code Scanner</h1>
-    <p>Point the rear camera at the participant's QR code. The check-in page will reopen automatically.</p>
-
-    <section id="setupBox" class="setup" hidden>
-      <h2>One-time scanner setup</h2>
-      <p>Paste the deployed Google Apps Script web-app URL ending in <strong>/exec</strong>. The scanner will save it on this device.</p>
-      <div class="setup-row">
-        <input id="targetInput" type="url" inputmode="url" placeholder="https://script.google.com/macros/s/.../exec">
-        <button class="btn" type="button" onclick="saveTarget()">Save Check-in URL</button>
-      </div>
-    </section>
+    <p>Point the rear camera at the participant's QR code. The event check-in page will open automatically.</p>
 
     <div id="reader"></div>
     <button id="startButton" class="btn" type="button" onclick="startScanner()">Start Camera</button>
 
     <div class="manual">
-      <input id="manualCode" inputmode="numeric" placeholder="1234" maxlength="80">
+      <input id="manualCode" inputmode="numeric" placeholder="1234" maxlength="80" autocomplete="off">
       <button class="btn" type="button" onclick="returnCode(document.getElementById('manualCode').value)">Use</button>
     </div>
 
     <div id="error" class="error"></div>
-    <div id="currentTarget" class="current-target"></div>
     <p class="small">This page must be hosted on HTTPS, such as GitHub Pages, Netlify, Cloudflare Pages or Firebase Hosting.</p>
   </main>
 
   <script>
-    const STORAGE_KEY = 'eventCheckInTargetUrl';
-    const queryTarget = new URLSearchParams(location.search).get('target') || '';
-    let target = resolveInitialTarget();
+    // IMPORTANT: Replace the URL below with your deployed Apps Script /exec URL.
+    // Keep ?page=checkin at the end.
+    const CHECK_IN_URL = 'https://script.google.com/macros/s/REPLACE_WITH_YOUR_DEPLOYMENT_ID/exec?page=checkin';
+
     let scanner = null;
     let completed = false;
+    const target = normalizeTarget(CHECK_IN_URL);
 
     document.getElementById('manualCode').addEventListener('keydown', event => {
       if (event.key === 'Enter') returnCode(event.target.value);
     });
 
     window.addEventListener('load', () => {
-      refreshTargetUi();
-    });
-
-    function resolveInitialTarget() {
-      const fromQuery = normalizeTarget(queryTarget);
-      if (fromQuery) {
-        localStorage.setItem(STORAGE_KEY, fromQuery);
-        return fromQuery;
+      if (!target) {
+        document.getElementById('startButton').disabled = true;
+        setError('The check-in URL inside Scanner.html is missing or invalid. Update CHECK_IN_URL with the deployed Apps Script /exec URL.');
       }
-
-      const saved = normalizeTarget(localStorage.getItem(STORAGE_KEY) || '');
-      return saved || '';
-    }
+    });
 
     function normalizeTarget(value) {
       try {
@@ -140,10 +107,11 @@
           url.protocol === 'https:' &&
           url.hostname === 'script.google.com' &&
           url.pathname.startsWith('/macros/s/') &&
-          /\/(exec|dev)$/.test(url.pathname);
+          /\/exec$/.test(url.pathname) &&
+          !url.pathname.includes('REPLACE_WITH_YOUR_DEPLOYMENT_ID');
 
         if (!isAppsScript) return '';
-        if (!url.searchParams.get('page')) url.searchParams.set('page', 'checkin');
+        url.searchParams.set('page', 'checkin');
         url.searchParams.delete('scan');
         return url.toString();
       } catch (error) {
@@ -151,43 +119,9 @@
       }
     }
 
-    function saveTarget() {
-      const entered = document.getElementById('targetInput').value.trim();
-      const normalized = normalizeTarget(entered);
-      if (!normalized) {
-        setError('Please enter the deployed Apps Script web-app URL ending in /exec. Do not enter the GitHub scanner URL.');
-        return;
-      }
-
-      target = normalized;
-      localStorage.setItem(STORAGE_KEY, target);
-      setError('');
-      refreshTargetUi();
-    }
-
-    function refreshTargetUi() {
-      const setupBox = document.getElementById('setupBox');
-      const startButton = document.getElementById('startButton');
-      const currentTarget = document.getElementById('currentTarget');
-
-      if (target) {
-        setupBox.hidden = true;
-        startButton.disabled = false;
-        currentTarget.textContent = 'Check-in destination: ' + target;
-      } else {
-        setupBox.hidden = false;
-        startButton.disabled = true;
-        currentTarget.textContent = '';
-        setError('The Apps Script check-in URL has not been configured on this device.');
-      }
-    }
-
     async function startScanner() {
       setError('');
-      if (!target) {
-        refreshTargetUi();
-        return;
-      }
+      if (!target) return;
 
       document.getElementById('startButton').disabled = true;
       try {
@@ -213,11 +147,7 @@
     async function returnCode(value) {
       if (completed) return;
       const code = String(value || '').trim();
-      if (!code) return;
-      if (!target) {
-        refreshTargetUi();
-        return;
-      }
+      if (!code || !target) return;
 
       completed = true;
       if (scanner) {
