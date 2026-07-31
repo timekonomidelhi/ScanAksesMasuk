@@ -6,37 +6,111 @@
   <title>Camera QR Code Scanner</title>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <style>
-    :root { --bg:#0f172a; --card:#fff; --text:#172033; --muted:#667085; --primary:#155eef; --danger:#d92d20; }
+    :root {
+      --bg:#0f172a;
+      --card:#fff;
+      --text:#172033;
+      --muted:#667085;
+      --primary:#155eef;
+      --danger:#d92d20;
+      --border:#d0d5dd;
+      --soft:#f8fafc;
+    }
     * { box-sizing: border-box; }
-    body { margin: 0; min-height: 100vh; background: var(--bg); font-family: Arial, sans-serif; padding: 18px; display: grid; place-items: center; }
-    .card { width: min(560px, 100%); background: var(--card); border-radius: 18px; padding: 20px; color: var(--text); }
+    [hidden] { display: none !important; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      font-family: Arial, sans-serif;
+      padding: 18px;
+      display: grid;
+      place-items: center;
+    }
+    .card {
+      width: min(560px, 100%);
+      background: var(--card);
+      border-radius: 18px;
+      padding: 20px;
+      color: var(--text);
+    }
     h1 { margin: 0 0 8px; font-size: 25px; }
     p { color: var(--muted); line-height: 1.45; }
     #reader { width: 100%; overflow: hidden; border-radius: 12px; margin: 16px 0; }
-    .btn { width: 100%; border: 0; border-radius: 10px; padding: 13px; font: 700 16px Arial, sans-serif; cursor: pointer; background: var(--primary); color: #fff; }
+    .btn {
+      width: 100%;
+      border: 0;
+      border-radius: 10px;
+      padding: 13px;
+      font: 700 16px Arial, sans-serif;
+      cursor: pointer;
+      background: var(--primary);
+      color: #fff;
+    }
+    .btn:disabled { opacity: .55; cursor: not-allowed; }
     .manual { display: flex; gap: 8px; margin-top: 12px; }
-    input { min-width: 0; flex: 1; border: 1px solid #d0d5dd; border-radius: 10px; padding: 12px; font-size: 20px; letter-spacing: 3px; }
+    input {
+      min-width: 0;
+      flex: 1;
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      font-size: 16px;
+    }
+    #manualCode { font-size: 20px; letter-spacing: 3px; }
     .manual .btn { width: auto; }
     .error { color: var(--danger); min-height: 20px; font-size: 13px; margin-top: 10px; }
     .small { font-size: 12px; }
+    .setup {
+      margin: 14px 0;
+      padding: 14px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--soft);
+    }
+    .setup h2 { margin: 0 0 7px; font-size: 17px; }
+    .setup p { margin: 0 0 10px; font-size: 13px; }
+    .setup-row { display: grid; gap: 8px; }
+    .current-target {
+      overflow-wrap: anywhere;
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 10px;
+    }
   </style>
 </head>
 <body>
   <main class="card">
     <h1>Camera QR Code Scanner</h1>
     <p>Point the rear camera at the participant's QR code. The check-in page will reopen automatically.</p>
+
+    <section id="setupBox" class="setup" hidden>
+      <h2>One-time scanner setup</h2>
+      <p>Paste the deployed Google Apps Script web-app URL ending in <strong>/exec</strong>. The scanner will save it on this device.</p>
+      <div class="setup-row">
+        <input id="targetInput" type="url" inputmode="url" placeholder="https://script.google.com/macros/s/.../exec">
+        <button class="btn" type="button" onclick="saveTarget()">Save Check-in URL</button>
+      </div>
+    </section>
+
     <div id="reader"></div>
-    <button id="startButton" class="btn" onclick="startScanner()">Start Camera</button>
+    <button id="startButton" class="btn" type="button" onclick="startScanner()">Start Camera</button>
+
     <div class="manual">
       <input id="manualCode" inputmode="numeric" placeholder="1234" maxlength="80">
-      <button class="btn" onclick="returnCode(document.getElementById('manualCode').value)">Use</button>
+      <button class="btn" type="button" onclick="returnCode(document.getElementById('manualCode').value)">Use</button>
     </div>
+
     <div id="error" class="error"></div>
-    <p class="small">This file must be hosted on an HTTPS website, such as GitHub Pages, Netlify, Cloudflare Pages or Firebase Hosting.</p>
+    <div id="currentTarget" class="current-target"></div>
+    <p class="small">This page must be hosted on HTTPS, such as GitHub Pages, Netlify, Cloudflare Pages or Firebase Hosting.</p>
   </main>
 
   <script>
-    const target = new URLSearchParams(location.search).get('target') || '';
+    const STORAGE_KEY = 'eventCheckInTargetUrl';
+    const queryTarget = new URLSearchParams(location.search).get('target') || '';
+    let target = resolveInitialTarget();
     let scanner = null;
     let completed = false;
 
@@ -44,28 +118,81 @@
       if (event.key === 'Enter') returnCode(event.target.value);
     });
 
-    function validTarget(value) {
+    window.addEventListener('load', () => {
+      refreshTargetUi();
+    });
+
+    function resolveInitialTarget() {
+      const fromQuery = normalizeTarget(queryTarget);
+      if (fromQuery) {
+        localStorage.setItem(STORAGE_KEY, fromQuery);
+        return fromQuery;
+      }
+
+      const saved = normalizeTarget(localStorage.getItem(STORAGE_KEY) || '');
+      return saved || '';
+    }
+
+    function normalizeTarget(value) {
       try {
-        const url = new URL(value);
-        return url.protocol === 'https:' && url.hostname === 'script.google.com' && url.pathname.startsWith('/macros/s/');
+        const url = new URL(String(value || '').trim());
+        const isAppsScript =
+          url.protocol === 'https:' &&
+          url.hostname === 'script.google.com' &&
+          url.pathname.startsWith('/macros/s/') &&
+          /\/(exec|dev)$/.test(url.pathname);
+
+        if (!isAppsScript) return '';
+        if (!url.searchParams.get('page')) url.searchParams.set('page', 'checkin');
+        url.searchParams.delete('scan');
+        return url.toString();
       } catch (error) {
-        return false;
+        return '';
+      }
+    }
+
+    function saveTarget() {
+      const entered = document.getElementById('targetInput').value.trim();
+      const normalized = normalizeTarget(entered);
+      if (!normalized) {
+        setError('Please enter the deployed Apps Script web-app URL ending in /exec. Do not enter the GitHub scanner URL.');
+        return;
+      }
+
+      target = normalized;
+      localStorage.setItem(STORAGE_KEY, target);
+      setError('');
+      refreshTargetUi();
+    }
+
+    function refreshTargetUi() {
+      const setupBox = document.getElementById('setupBox');
+      const startButton = document.getElementById('startButton');
+      const currentTarget = document.getElementById('currentTarget');
+
+      if (target) {
+        setupBox.hidden = true;
+        startButton.disabled = false;
+        currentTarget.textContent = 'Check-in destination: ' + target;
+      } else {
+        setupBox.hidden = false;
+        startButton.disabled = true;
+        currentTarget.textContent = '';
+        setError('The Apps Script check-in URL has not been configured on this device.');
       }
     }
 
     async function startScanner() {
       setError('');
-      if (!validTarget(target)) {
-        setError('The Apps Script check-in target URL is missing or invalid. Open this scanner from the Check-in page.');
+      if (!target) {
+        refreshTargetUi();
         return;
       }
 
       document.getElementById('startButton').disabled = true;
       try {
         scanner = new Html5Qrcode('reader', {
-          formatsToSupport: [
-            Html5QrcodeSupportedFormats.QR_CODE
-          ]
+          formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE]
         });
         await scanner.start(
           { facingMode: 'environment' },
@@ -87,8 +214,8 @@
       if (completed) return;
       const code = String(value || '').trim();
       if (!code) return;
-      if (!validTarget(target)) {
-        setError('The Apps Script check-in target URL is missing or invalid.');
+      if (!target) {
+        refreshTargetUi();
         return;
       }
 
@@ -96,8 +223,11 @@
       if (scanner) {
         try { await scanner.stop(); } catch (error) {}
       }
-      const separator = target.includes('?') ? '&' : '?';
-      location.replace(target + separator + 'scan=' + encodeURIComponent(code));
+
+      const destination = new URL(target);
+      destination.searchParams.set('page', 'checkin');
+      destination.searchParams.set('scan', code);
+      location.replace(destination.toString());
     }
 
     function setError(message) {
