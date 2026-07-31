@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>Camera QR Code Scanner</title>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    :root { --bg:#0f172a; --card:#fff; --text:#172033; --muted:#667085; --primary:#155eef; --danger:#d92d20; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: var(--bg); font-family: Arial, sans-serif; padding: 18px; display: grid; place-items: center; }
+    .card { width: min(560px, 100%); background: var(--card); border-radius: 18px; padding: 20px; color: var(--text); }
+    h1 { margin: 0 0 8px; font-size: 25px; }
+    p { color: var(--muted); line-height: 1.45; }
+    #reader { width: 100%; overflow: hidden; border-radius: 12px; margin: 16px 0; }
+    .btn { width: 100%; border: 0; border-radius: 10px; padding: 13px; font: 700 16px Arial, sans-serif; cursor: pointer; background: var(--primary); color: #fff; }
+    .manual { display: flex; gap: 8px; margin-top: 12px; }
+    input { min-width: 0; flex: 1; border: 1px solid #d0d5dd; border-radius: 10px; padding: 12px; font-size: 20px; letter-spacing: 3px; }
+    .manual .btn { width: auto; }
+    .error { color: var(--danger); min-height: 20px; font-size: 13px; margin-top: 10px; }
+    .small { font-size: 12px; }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>Camera QR Code Scanner</h1>
+    <p>Point the rear camera at the participant's QR code. The check-in page will reopen automatically.</p>
+    <div id="reader"></div>
+    <button id="startButton" class="btn" onclick="startScanner()">Start Camera</button>
+    <div class="manual">
+      <input id="manualCode" inputmode="numeric" placeholder="1234" maxlength="80">
+      <button class="btn" onclick="returnCode(document.getElementById('manualCode').value)">Use</button>
+    </div>
+    <div id="error" class="error"></div>
+    <p class="small">This file must be hosted on an HTTPS website, such as GitHub Pages, Netlify, Cloudflare Pages or Firebase Hosting.</p>
+  </main>
+
+  <script>
+    const target = new URLSearchParams(location.search).get('target') || '';
+    let scanner = null;
+    let completed = false;
+
+    document.getElementById('manualCode').addEventListener('keydown', event => {
+      if (event.key === 'Enter') returnCode(event.target.value);
+    });
+
+    function validTarget(value) {
+      try {
+        const url = new URL(value);
+        return url.protocol === 'https:' && url.hostname === 'script.google.com' && url.pathname.startsWith('/macros/s/');
+      } catch (error) {
+        return false;
+      }
+    }
+
+    async function startScanner() {
+      setError('');
+      if (!validTarget(target)) {
+        setError('The Apps Script check-in target URL is missing or invalid. Open this scanner from the Check-in page.');
+        return;
+      }
+
+      document.getElementById('startButton').disabled = true;
+      try {
+        scanner = new Html5Qrcode('reader', {
+          formatsToSupport: [
+            Html5QrcodeSupportedFormats.QR_CODE
+          ]
+        });
+        await scanner.start(
+          { facingMode: 'environment' },
+          {
+            fps: 12,
+            qrbox: { width: 260, height: 260 },
+            aspectRatio: 1.0
+          },
+          decodedText => returnCode(decodedText),
+          () => {}
+        );
+      } catch (error) {
+        document.getElementById('startButton').disabled = false;
+        setError('Unable to start the camera: ' + (error && error.message ? error.message : error));
+      }
+    }
+
+    async function returnCode(value) {
+      if (completed) return;
+      const code = String(value || '').trim();
+      if (!code) return;
+      if (!validTarget(target)) {
+        setError('The Apps Script check-in target URL is missing or invalid.');
+        return;
+      }
+
+      completed = true;
+      if (scanner) {
+        try { await scanner.stop(); } catch (error) {}
+      }
+      const separator = target.includes('?') ? '&' : '?';
+      location.replace(target + separator + 'scan=' + encodeURIComponent(code));
+    }
+
+    function setError(message) {
+      document.getElementById('error').textContent = message;
+    }
+  </script>
+</body>
+</html>
