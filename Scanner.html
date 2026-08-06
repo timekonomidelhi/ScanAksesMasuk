@@ -2,167 +2,196 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-  <title>Camera QR Code Scanner</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Participant Barcode Check-in</title>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <style>
-    :root {
-      --bg:#0f172a;
-      --card:#fff;
-      --text:#172033;
-      --muted:#667085;
-      --primary:#155eef;
-      --danger:#d92d20;
-      --border:#d0d5dd;
-    }
-    * { box-sizing: border-box; }
-    [hidden] { display: none !important; }
-    body {
-      margin: 0;
-      min-height: 100vh;
-      background: var(--bg);
-      font-family: Arial, sans-serif;
-      padding: 18px;
-      display: grid;
-      place-items: center;
-    }
-    .card {
-      width: min(560px, 100%);
-      background: var(--card);
-      border-radius: 18px;
-      padding: 20px;
-      color: var(--text);
-    }
-    h1 { margin: 0 0 8px; font-size: 25px; }
-    p { color: var(--muted); line-height: 1.45; }
-    #reader { width: 100%; overflow: hidden; border-radius: 12px; margin: 16px 0; }
-    .btn {
-      width: 100%;
-      border: 0;
-      border-radius: 10px;
-      padding: 13px;
-      font: 700 16px Arial, sans-serif;
-      cursor: pointer;
-      background: var(--primary);
-      color: #fff;
-    }
-    .btn:disabled { opacity: .55; cursor: not-allowed; }
-    .manual { display: flex; gap: 8px; margin-top: 12px; }
-    input {
-      min-width: 0;
-      flex: 1;
-      width: 100%;
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 12px;
-      font-size: 16px;
-    }
-    #manualCode { font-size: 20px; letter-spacing: 3px; }
-    .manual .btn { width: auto; }
-    .error { color: var(--danger); min-height: 20px; font-size: 13px; margin-top: 10px; }
-    .small { font-size: 12px; }
+    :root { --bg:#f4f7fb; --card:#fff; --text:#172033; --muted:#667085; --border:#dfe4ec; --primary:#155eef; --success:#079455; --danger:#d92d20; }
+    * { box-sizing:border-box; }
+    [hidden] { display:none !important; }
+    body { margin:0; background:var(--bg); color:var(--text); font-family:Arial,sans-serif; }
+    .shell { width:min(760px,100%); margin:0 auto; padding:18px; }
+    header { text-align:center; margin-bottom:16px; }
+    h1 { margin:0; font-size:clamp(28px,6vw,42px); line-height:1.15; }
+    .subtitle { margin-top:8px; font-size:clamp(18px,4vw,25px); font-weight:900; }
+    .panel { background:var(--card); border:1px solid var(--border); border-radius:18px; padding:18px; box-shadow:0 12px 35px rgba(16,24,40,.1); }
+    #reader { width:100%; overflow:hidden; border-radius:14px; }
+    .manual { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; margin-top:16px; }
+    input,button { font:inherit; }
+    .field { width:100%; min-height:58px; border:1.5px solid var(--border); border-radius:11px; padding:13px 15px; font-size:22px; font-weight:800; letter-spacing:.08em; }
+    .btn { min-height:58px; border:0; border-radius:11px; padding:12px 18px; background:var(--primary); color:#fff; font-weight:900; cursor:pointer; }
+    .btn:disabled { opacity:.55; cursor:not-allowed; }
+    .message { margin-top:14px; padding:13px 15px; border-radius:10px; background:#f9fafb; color:var(--muted); line-height:1.45; }
+    .participant { margin-top:16px; border-top:1px solid var(--border); padding-top:16px; }
+    .participant-id { font-size:42px; font-weight:900; letter-spacing:.09em; }
+    .participant-name { margin-top:7px; font-size:28px; font-weight:900; }
+    .participation { margin-top:7px; color:var(--muted); font-weight:700; }
+    .family-title { margin:18px 0 8px; font-size:19px; }
+    .family-list { display:grid; gap:9px; }
+    .family-option { display:flex; align-items:center; gap:12px; padding:12px; border:1px solid var(--border); border-radius:10px; }
+    .family-option input { width:26px; height:26px; accent-color:var(--success); }
+    .confirm { width:100%; margin-top:17px; min-height:66px; font-size:23px; }
+    .overlay { position:fixed; inset:0; z-index:100; display:grid; place-items:center; padding:20px; text-align:center; color:#fff; background:var(--success); }
+    .overlay.error { background:var(--danger); }
+    .overlay h2 { margin:0; font-size:clamp(42px,10vw,82px); line-height:1.05; }
+    .overlay p { margin:18px 0 0; font-size:clamp(24px,6vw,44px); font-weight:900; line-height:1.15; }
+    .overlay small { display:block; margin-top:22px; font-size:16px; }
+    @media(max-width:560px){ .shell{padding:10px}.panel{padding:13px}.manual{grid-template-columns:1fr}.btn{width:100%} }
   </style>
 </head>
 <body>
-  <main class="card">
-    <h1>Camera QR Code Scanner</h1>
-    <p>Point the rear camera at the participant's QR code. The event check-in page will open automatically.</p>
-
-    <div id="reader"></div>
-    <button id="startButton" class="btn" type="button" onclick="startScanner()">Start Camera</button>
-
-    <div class="manual">
-      <input id="manualCode" inputmode="numeric" placeholder="1234" maxlength="80" autocomplete="off">
-      <button class="btn" type="button" onclick="returnCode(document.getElementById('manualCode').value)">Use</button>
-    </div>
-
-    <div id="error" class="error"></div>
-    <p class="small">This page must be hosted on HTTPS, such as GitHub Pages, Netlify, Cloudflare Pages or Firebase Hosting.</p>
+  <main class="shell">
+    <header>
+      <!-- Set the event name here -->
+      <h1>HUT RI KE-81 KBRI NEW DELHI</h1>
+      <div class="subtitle">BARCODE CHECK-IN</div>
+    </header>
+    <section class="panel">
+      <div id="reader"></div>
+      <div class="manual">
+        <input id="manualId" class="field" type="text" inputmode="numeric" maxlength="4" placeholder="Participant ID">
+        <button id="lookupButton" class="btn" type="button">LOOK UP</button>
+      </div>
+      <div id="message" class="message">Scan the Code 128 barcode or enter the four-digit Participant ID.</div>
+      <section id="participantCard" class="participant" hidden>
+        <div id="participantId" class="participant-id"></div>
+        <div id="participantName" class="participant-name"></div>
+        <div id="participation" class="participation"></div>
+        <h3 class="family-title">Family members attending</h3>
+        <div id="familyList" class="family-list"></div>
+        <button id="confirmButton" class="btn confirm" type="button">CONFIRM CHECK-IN</button>
+      </section>
+    </section>
   </main>
-
+  <div id="overlay" class="overlay" hidden>
+    <div><h2 id="overlayTitle"></h2><p id="overlayMessage"></p><small>Tap anywhere to continue</small></div>
+  </div>
   <script>
-    // IMPORTANT: Replace the URL below with your deployed Apps Script /exec URL.
-    // Keep ?page=checkin at the end.
-    const CHECK_IN_URL = 'https://script.google.com/macros/s/REPLACE_WITH_YOUR_DEPLOYMENT_ID/exec?page=checkin';
+    // Paste the deployed Google Apps Script web-app /exec URL below.
+    const WEB_APP_URL = 'PASTE_YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL_HERE';
+    let currentParticipant = null;
+    let busy = false;
+    let lastScannedId = '';
+    let lastScanAt = 0;
 
-    let scanner = null;
-    let completed = false;
-    const target = normalizeTarget(CHECK_IN_URL);
+    const manualId = document.getElementById('manualId');
+    const lookupButton = document.getElementById('lookupButton');
+    const participantCard = document.getElementById('participantCard');
+    const confirmButton = document.getElementById('confirmButton');
+    const overlay = document.getElementById('overlay');
 
-    document.getElementById('manualCode').addEventListener('keydown', event => {
-      if (event.key === 'Enter') returnCode(event.target.value);
-    });
+    window.addEventListener('load', startScanner);
+    lookupButton.addEventListener('click', () => lookupParticipant(manualId.value));
+    manualId.addEventListener('input', () => { manualId.value = manualId.value.replace(/\D/g, '').slice(0, 4); });
+    manualId.addEventListener('keydown', event => { if (event.key === 'Enter') lookupParticipant(manualId.value); });
+    confirmButton.addEventListener('click', confirmCheckIn);
+    overlay.addEventListener('click', resetForNextScan);
 
-    window.addEventListener('load', () => {
-      if (!target) {
-        document.getElementById('startButton').disabled = true;
-        setError('The check-in URL inside Scanner.html is missing or invalid. Update CHECK_IN_URL with the deployed Apps Script /exec URL.');
+    function startScanner() {
+      if (!isWebAppConfigured()) return;
+      if (typeof Html5Qrcode === 'undefined') {
+        setMessage('The barcode scanner library could not be loaded. Use manual Participant ID entry.');
+        return;
       }
-    });
-
-    function normalizeTarget(value) {
-      try {
-        const url = new URL(String(value || '').trim());
-        const isAppsScript =
-          url.protocol === 'https:' &&
-          url.hostname === 'script.google.com' &&
-          url.pathname.startsWith('/macros/s/') &&
-          /\/exec$/.test(url.pathname) &&
-          !url.pathname.includes('REPLACE_WITH_YOUR_DEPLOYMENT_ID');
-
-        if (!isAppsScript) return '';
-        url.searchParams.set('page', 'checkin');
-        url.searchParams.delete('scan');
-        return url.toString();
-      } catch (error) {
-        return '';
-      }
+      const scanner = new Html5Qrcode('reader', {
+        formatsToSupport: [Html5QrcodeSupportedFormats.CODE_128]
+      });
+      scanner.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: viewportWidth => ({ width: Math.min(viewportWidth - 40, 520), height: 180 }) },
+        decodedText => {
+          const id = String(decodedText || '').replace(/\D/g, '').slice(0, 4);
+          const now = Date.now();
+          if (!/^\d{4}$/.test(id) || (id === lastScannedId && now - lastScanAt < 2500)) return;
+          lastScannedId = id;
+          lastScanAt = now;
+          manualId.value = id;
+          lookupParticipant(id);
+        },
+        () => {}
+      ).catch(error => {
+        setMessage('Camera could not be started. Allow camera access or use manual Participant ID entry. ' + readableError(error));
+      });
     }
 
-    async function startScanner() {
-      setError('');
-      if (!target) return;
+    function lookupParticipant(value) {
+      if (busy || !isWebAppConfigured()) return;
+      const id = String(value || '').replace(/\D/g, '');
+      if (!/^\d{4}$/.test(id)) { showOverlay(false, 'INVALID ID', 'Enter exactly four digits.'); return; }
+      setBusy(true, 'Looking up participant…');
+      jsonp({ action: 'lookupParticipant', participantId: id })
+        .then(result => {
+          setBusy(false);
+          if (!result || !result.success) throw new Error(result && result.error || 'Participant ID not found.');
+          currentParticipant = result.participant;
+          renderParticipant(currentParticipant);
+        })
+        .catch(error => { setBusy(false); showOverlay(false, 'NOT FOUND', readableError(error)); });
+    }
 
-      document.getElementById('startButton').disabled = true;
-      try {
-        scanner = new Html5Qrcode('reader', {
-          formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE]
+    function renderParticipant(person) {
+      document.getElementById('participantId').textContent = person.participantId || '';
+      document.getElementById('participantName').textContent = person.name || '';
+      document.getElementById('participation').textContent = person.participation || '';
+      const list = document.getElementById('familyList');
+      list.replaceChildren();
+      if (!person.familyList || !person.familyList.length) {
+        const empty = document.createElement('div'); empty.className = 'message'; empty.textContent = 'No family members registered.'; list.appendChild(empty);
+      } else {
+        const attending = new Set((person.attendingFamilyList || []).map(normalize));
+        person.familyList.forEach(member => {
+          const label = document.createElement('label'); label.className = 'family-option';
+          const input = document.createElement('input'); input.type = 'checkbox'; input.value = member; input.checked = person.checkedIn && attending.has(normalize(member)); input.disabled = person.checkedIn;
+          const span = document.createElement('span'); span.textContent = member;
+          label.append(input, span); list.appendChild(label);
         });
-        await scanner.start(
-          { facingMode: 'environment' },
-          {
-            fps: 12,
-            qrbox: { width: 260, height: 260 },
-            aspectRatio: 1.0
-          },
-          decodedText => returnCode(decodedText),
-          () => {}
-        );
-      } catch (error) {
-        document.getElementById('startButton').disabled = false;
-        setError('Unable to start the camera: ' + (error && error.message ? error.message : error));
       }
+      confirmButton.disabled = Boolean(person.checkedIn);
+      confirmButton.textContent = person.checkedIn ? 'ALREADY CHECKED IN AT ' + (person.checkInTime || '') : 'CONFIRM CHECK-IN';
+      participantCard.hidden = false;
+      participantCard.scrollIntoView({ behavior:'smooth', block:'nearest' });
+      setMessage(person.checkedIn ? 'This participant has already checked in.' : 'Confirm the attending family members, then tap CONFIRM CHECK-IN.');
     }
 
-    async function returnCode(value) {
-      if (completed) return;
-      const code = String(value || '').trim();
-      if (!code || !target) return;
-
-      completed = true;
-      if (scanner) {
-        try { await scanner.stop(); } catch (error) {}
-      }
-
-      const destination = new URL(target);
-      destination.searchParams.set('page', 'checkin');
-      destination.searchParams.set('scan', code);
-      location.replace(destination.toString());
+    function confirmCheckIn() {
+      if (!currentParticipant || busy || currentParticipant.checkedIn) return;
+      const family = Array.from(document.querySelectorAll('#familyList input:checked')).map(input => input.value);
+      setBusy(true, 'Recording check-in…');
+      jsonp({ action:'checkInParticipant', participantId:currentParticipant.participantId, family:JSON.stringify(family) })
+        .then(result => {
+          setBusy(false);
+          if (!result) throw new Error('No response received.');
+          if (result.duplicate) { currentParticipant = result.participant; showOverlay(false, 'ALREADY CHECKED IN', currentParticipant.name || 'Participant'); return; }
+          if (!result.success) throw new Error(result.error || 'Check-in failed.');
+          currentParticipant = result.participant;
+          showOverlay(true, 'CHECK-IN SUCCESS', currentParticipant.name || 'Participant');
+        })
+        .catch(error => { setBusy(false); showOverlay(false, 'CHECK-IN FAILED', readableError(error)); });
     }
 
-    function setError(message) {
-      document.getElementById('error').textContent = message;
+    function jsonp(parameters) {
+      return new Promise((resolve, reject) => {
+        const callbackName = '__scannerCallback_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
+        const script = document.createElement('script');
+        const timeout = setTimeout(() => cleanup(new Error('The server did not respond.')), 20000);
+        function cleanup(error, data) {
+          clearTimeout(timeout); delete window[callbackName]; script.remove(); error ? reject(error) : resolve(data);
+        }
+        window[callbackName] = data => cleanup(null, data);
+        script.onerror = () => cleanup(new Error('Could not connect to the Google Apps Script web app.'));
+        const query = new URLSearchParams({ ...parameters, callback: callbackName });
+        script.src = WEB_APP_URL + (WEB_APP_URL.includes('?') ? '&' : '?') + query.toString();
+        document.body.appendChild(script);
+      });
     }
+
+    function setBusy(value, message) { busy=value; lookupButton.disabled=value; confirmButton.disabled=value || Boolean(currentParticipant && currentParticipant.checkedIn); if(message) setMessage(message); }
+    function setMessage(message) { document.getElementById('message').textContent = message; }
+    function showOverlay(success, title, message) { document.getElementById('overlayTitle').textContent=title; document.getElementById('overlayMessage').textContent=message; overlay.classList.toggle('error',!success); overlay.hidden=false; }
+    function resetForNextScan() { overlay.hidden=true; currentParticipant=null; participantCard.hidden=true; manualId.value=''; manualId.focus(); setMessage('Scan the next barcode or enter a Participant ID.'); }
+    function normalize(value) { return String(value||'').trim().toLocaleLowerCase().replace(/\s+/g,' '); }
+    function readableError(error) { return error && error.message ? error.message : String(error || 'Unknown error.'); }
+    function isWebAppConfigured() { const ok=/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec(?:\?|$)/.test(WEB_APP_URL); if(!ok) setMessage('Open this HTML file and replace WEB_APP_URL with your deployed Apps Script /exec URL.'); return ok; }
   </script>
 </body>
 </html>
