@@ -48,7 +48,7 @@
     #reader video { object-fit:cover; }
     .camera-fallback { margin-top:12px; }
     .manual-label { display:block; margin:20px 0 8px; font-weight:900; }
-    .manual { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:9px; }
+    .manual { display:block; }
     input {
       width:100%;
       min-width:0;
@@ -144,8 +144,6 @@
       body { padding:10px; }
       .card { padding:15px; border-radius:15px; }
       #reader { min-height:260px; }
-      .manual { grid-template-columns:1fr; }
-      .manual .btn { width:100%; }
       .modal { padding:10px; }
       .modal-card { padding:18px 15px; border-radius:15px; }
       .modal-actions { grid-template-columns:1fr; }
@@ -156,16 +154,16 @@
 <body>
   <main class="card">
     <h1>PARTICIPANT SCANNER</h1>
-    <p class="subtitle">The camera opens automatically. Point it at the participant barcode or QR code.</p>
+    <p class="subtitle">The camera opens automatically. Point it at the participant QR code.</p>
 
     <div id="reader"></div>
     <button id="startButton" class="btn btn-full camera-fallback" type="button" hidden>START CAMERA</button>
 
     <label class="manual-label" for="manualCode">Participant ID</label>
     <div class="manual">
-      <input id="manualCode" inputmode="numeric" pattern="[0-9]*" placeholder="12345" maxlength="5" autocomplete="off">
-      <button id="manualButton" class="btn" type="button">OPEN</button>
+      <input id="manualCode" inputmode="numeric" pattern="[0-9]*" placeholder="12345" maxlength="5" autocomplete="off" aria-describedby="manualHelp">
     </div>
+    <p id="manualHelp" class="small">Check-in runs automatically after a valid 5-digit Participant ID is entered.</p>
 
     <div id="error" class="error"></div>
     <p class="small">Camera access requires HTTPS. If automatic camera access is blocked by the browser, use START CAMERA.</p>
@@ -210,7 +208,6 @@
     const reader = document.getElementById('reader');
     const startButton = document.getElementById('startButton');
     const manualCode = document.getElementById('manualCode');
-    const manualButton = document.getElementById('manualButton');
     const participantModal = document.getElementById('participantModal');
     const participantClose = document.getElementById('participantClose');
     const checkInButton = document.getElementById('checkInButton');
@@ -222,22 +219,17 @@
         setError('Update APPS_SCRIPT_URL in Scanner.html with your deployed Apps Script /exec URL.');
         startButton.hidden = false;
         startButton.disabled = true;
-        manualButton.disabled = true;
         return;
       }
       startScanner();
     });
 
     startButton.addEventListener('click', startScanner);
-    manualButton.addEventListener('click', () => openParticipant(manualCode.value));
-    manualCode.addEventListener('keydown', event => {
-      if (event.key === 'Enter') {
-        event.preventDefault();
-        openParticipant(manualCode.value);
-      }
-    });
     manualCode.addEventListener('input', () => {
       manualCode.value = manualCode.value.replace(/\D/g, '').slice(0, 5);
+      if (manualCode.value.length === 5 && !scanLocked) {
+        manualCheckIn(manualCode.value);
+      }
     });
 
     participantClose.addEventListener('click', closeParticipantModal);
@@ -265,10 +257,7 @@
 
       try {
         scanner = new Html5Qrcode('reader', {
-          formatsToSupport: [
-            Html5QrcodeSupportedFormats.CODE_128,
-            Html5QrcodeSupportedFormats.QR_CODE
-          ]
+          formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE]
         });
 
         await scanner.start(
@@ -276,8 +265,8 @@
           {
             fps: 12,
             qrbox: (viewfinderWidth, viewfinderHeight) => {
-              const width = Math.min(viewfinderWidth - 30, 430);
-              return { width: Math.max(220, width), height: Math.min(180, viewfinderHeight - 30) };
+              const size = Math.min(viewfinderWidth - 30, viewfinderHeight - 30, 300);
+              return { width: Math.max(210, size), height: Math.max(210, size) };
             },
             aspectRatio: 1.333333
           },
@@ -298,8 +287,8 @@
     function normalizeScannedCode(value) {
       let code = String(value || '').trim();
       if (/^HUTRI81:/i.test(code)) code = code.replace(/^HUTRI81:/i, '');
-      const digitMatch = code.match(/\d{5,6}/);
-      return digitMatch ? digitMatch[0] : code.replace(/[^A-Za-z0-9-]/g, '');
+      const digitMatch = code.match(/(?:^|\D)(\d{5})(?:\D|$)/);
+      return digitMatch ? digitMatch[1] : '';
     }
 
     async function openParticipant(rawCode) {
@@ -309,7 +298,6 @@
 
       scanLocked = true;
       setError('');
-      manualButton.disabled = true;
 
       try {
         const result = await jsonpRequest({ api: 'participant', participantId });
@@ -329,7 +317,46 @@
       } catch (error) {
         showResult('error-state', 'ERROR', 'PARTICIPANT NOT FOUND', error && error.message ? error.message : String(error));
       } finally {
-        manualButton.disabled = false;
+      }
+    }
+
+    async function manualCheckIn(participantId) {
+      if (scanLocked || !/^\d{5}$/.test(String(participantId || ''))) return;
+      scanLocked = true;
+      setError('');
+
+      try {
+        const result = await jsonpRequest({
+          api: 'checkin',
+          participantId: participantId,
+          family: '[]'
+        });
+
+        if (result && result.duplicate) {
+          currentParticipant = result.participant || null;
+          showResult('duplicate', currentParticipant ? currentParticipant.name : '', 'ALREADY CHECKED IN', 'This participant has already checked in.');
+          return;
+        }
+
+        if (!result || !result.success) {
+          const serverError = result && result.error ? String(result.error) : '';
+          if (/not found/i.test(serverError)) {
+            showResult('error-state', '', 'PARTICIPANT ID NOT FOUND', 'Participant ID not Found, please submit correct participant ID');
+          } else {
+            showResult('error-state', 'ERROR', 'CHECK-IN FAILED', serverError || 'Check-in could not be completed.');
+          }
+          return;
+        }
+
+        currentParticipant = result.participant || null;
+        showResult('success', currentParticipant ? currentParticipant.name : '', 'CHECK IN SUCCESS', '');
+      } catch (error) {
+        const message = error && error.message ? error.message : String(error);
+        if (/not found/i.test(message)) {
+          showResult('error-state', '', 'PARTICIPANT ID NOT FOUND', 'Participant ID not Found, please submit correct participant ID');
+        } else {
+          showResult('error-state', 'ERROR', 'CHECK-IN FAILED', message);
+        }
       }
     }
 
