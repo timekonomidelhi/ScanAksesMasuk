@@ -339,7 +339,7 @@
         participant.mobile,
         participant.email,
         participant.city
-      ].filter(value => value && value !== 'â€”').join(' Â· ');
+      ].filter(value => value && value !== '—').join(' · ');
 
       const familyList = document.getElementById('familyList');
       const familyHelp = document.getElementById('familyHelp');
@@ -374,7 +374,7 @@
     async function submitCheckIn() {
       if (!currentParticipant) return;
       checkInButton.disabled = true;
-      checkInButton.textContent = 'SAVINGâ€¦';
+      checkInButton.textContent = 'SAVING…';
 
       const selectedFamilyMembers = Array.from(
         document.querySelectorAll('#familyList input[type="checkbox"]:checked')
