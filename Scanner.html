@@ -181,7 +181,6 @@
   <div id="participantModal" class="modal" role="dialog" aria-modal="true" hidden>
     <div class="modal-card">
       <h2 id="participantName" class="modal-title"></h2>
-      <div id="participantId" class="participant-id"></div>
       <div id="participantDetails" class="participant-details"></div>
 
       <h3 class="family-title">Family Members</h3>
@@ -332,14 +331,8 @@
 
     function renderParticipantModal(participant) {
       document.getElementById('participantName').textContent = participant.name || 'PARTICIPANT';
-      document.getElementById('participantId').textContent = 'Participant ID: ' + (participant.participantId || '');
-      document.getElementById('participantDetails').textContent = [
-        participant.participation,
-        participant.categoryDisplay || participant.category,
-        participant.mobile,
-        participant.email,
-        participant.city
-      ].filter(value => value && value !== '—').join(' · ');
+      // EMAIL ONLY: do not display Participant ID, participation, category, mobile, or city.
+      document.getElementById('participantDetails').textContent = participant.email || '—';
 
       const familyList = document.getElementById('familyList');
       const familyHelp = document.getElementById('familyHelp');
