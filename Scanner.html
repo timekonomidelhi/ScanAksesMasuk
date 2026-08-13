@@ -100,6 +100,15 @@
     }
     .modal-title { margin:0; font-size:clamp(29px,6vw,42px); line-height:1.12; text-align:center; }
     .participant-id { margin-top:9px; color:var(--muted); font-size:17px; font-weight:800; text-align:center; }
+    .participant-details {
+      margin-top:12px;
+      color:var(--muted);
+      font-size:15px;
+      font-weight:700;
+      line-height:1.55;
+      text-align:center;
+      overflow-wrap:anywhere;
+    }
     .family-title { margin:24px 0 8px; font-size:20px; }
     .family-help { margin:0 0 12px; color:var(--muted); line-height:1.45; }
     .family-list { display:grid; gap:10px; }
@@ -161,9 +170,9 @@
 
     <label class="manual-label" for="manualCode">Participant ID</label>
     <div class="manual">
-      <input id="manualCode" inputmode="numeric" pattern="[0-9]*" placeholder="12345" maxlength="5" autocomplete="off" aria-describedby="manualHelp">
+      <input id="manualCode" type="text" inputmode="numeric" pattern="[0-9]{5}" placeholder="12345" maxlength="5" autocomplete="off" spellcheck="false" aria-describedby="manualHelp">
     </div>
-    <p id="manualHelp" class="small">Check-in runs automatically after a valid 5-digit Participant ID is entered.</p>
+    <p id="manualHelp" class="small">Participant details appear automatically after a valid 5-digit ID is entered. Check-in occurs only after you press CHECK-IN.</p>
 
     <div id="error" class="error"></div>
     <p class="small">Camera access requires HTTPS. If automatic camera access is blocked by the browser, use START CAMERA.</p>
@@ -173,6 +182,7 @@
     <div class="modal-card">
       <h2 id="participantName" class="modal-title"></h2>
       <div id="participantId" class="participant-id"></div>
+      <div id="participantDetails" class="participant-details"></div>
 
       <h3 class="family-title">Family Members</h3>
       <p id="familyHelp" class="family-help">Select the family members who are checking in.</p>
@@ -228,7 +238,7 @@
     manualCode.addEventListener('input', () => {
       manualCode.value = manualCode.value.replace(/\D/g, '').slice(0, 5);
       if (manualCode.value.length === 5 && !scanLocked) {
-        manualCheckIn(manualCode.value);
+        openParticipant(manualCode.value);
       }
     });
 
@@ -320,49 +330,16 @@
       }
     }
 
-    async function manualCheckIn(participantId) {
-      if (scanLocked || !/^\d{5}$/.test(String(participantId || ''))) return;
-      scanLocked = true;
-      setError('');
-
-      try {
-        const result = await jsonpRequest({
-          api: 'checkin',
-          participantId: participantId,
-          family: '[]'
-        });
-
-        if (result && result.duplicate) {
-          currentParticipant = result.participant || null;
-          showResult('duplicate', currentParticipant ? currentParticipant.name : '', 'ALREADY CHECKED IN', 'This participant has already checked in.');
-          return;
-        }
-
-        if (!result || !result.success) {
-          const serverError = result && result.error ? String(result.error) : '';
-          if (/not found/i.test(serverError)) {
-            showResult('error-state', '', 'PARTICIPANT ID NOT FOUND', 'Participant ID not Found, please submit correct participant ID');
-          } else {
-            showResult('error-state', 'ERROR', 'CHECK-IN FAILED', serverError || 'Check-in could not be completed.');
-          }
-          return;
-        }
-
-        currentParticipant = result.participant || null;
-        showResult('success', currentParticipant ? currentParticipant.name : '', 'CHECK IN SUCCESS', '');
-      } catch (error) {
-        const message = error && error.message ? error.message : String(error);
-        if (/not found/i.test(message)) {
-          showResult('error-state', '', 'PARTICIPANT ID NOT FOUND', 'Participant ID not Found, please submit correct participant ID');
-        } else {
-          showResult('error-state', 'ERROR', 'CHECK-IN FAILED', message);
-        }
-      }
-    }
-
     function renderParticipantModal(participant) {
       document.getElementById('participantName').textContent = participant.name || 'PARTICIPANT';
       document.getElementById('participantId').textContent = 'Participant ID: ' + (participant.participantId || '');
+      document.getElementById('participantDetails').textContent = [
+        participant.participation,
+        participant.categoryDisplay || participant.category,
+        participant.mobile,
+        participant.email,
+        participant.city
+      ].filter(value => value && value !== 'â€”').join(' Â· ');
 
       const familyList = document.getElementById('familyList');
       const familyHelp = document.getElementById('familyHelp');
@@ -397,7 +374,7 @@
     async function submitCheckIn() {
       if (!currentParticipant) return;
       checkInButton.disabled = true;
-      checkInButton.textContent = 'SAVING…';
+      checkInButton.textContent = 'SAVINGâ€¦';
 
       const selectedFamilyMembers = Array.from(
         document.querySelectorAll('#familyList input[type="checkbox"]:checked')
