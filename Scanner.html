@@ -208,6 +208,7 @@
     // IMPORTANT: Replace this with the deployed Apps Script /exec URL.
     // Example: https://script.google.com/macros/s/AKfycb.../exec
     const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz0QKnCmiB0GEuHGspWmtdblh_I-_K_2tmWG9GI1VCBpenQAXhozOAj0UaB6f2yeieb/exec';
+    const REQUIRED_BACKEND_BUILD = '20260816.5';
 
     let scanner = null;
     let cameraStarted = false;
@@ -311,12 +312,13 @@
 
       try {
         const result = await jsonpRequest({ api: 'participant', participantId });
+        requireCurrentBackend(result);
         if (!result || !result.success || !result.participant) {
           throw new Error(result && result.error ? result.error : 'Participant ID was not found.');
         }
 
         currentParticipant = result.participant;
-        if (currentParticipant.checkedIn) {
+        if (getCheckInState(currentParticipant).complete) {
           showResult('duplicate', currentParticipant.name, 'ALREADY CHECKED IN', 'This participant has already checked in.');
           return;
         }
@@ -339,11 +341,9 @@
       const familyHelp = document.getElementById('familyHelp');
       familyList.replaceChildren();
 
-      const members = Array.isArray(participant.familyList) ? participant.familyList : [];
-      const attendingFamilyKeys = new Set(
-        (Array.isArray(participant.attendingFamilyList) ? participant.attendingFamilyList : [])
-          .map(normalize)
-      );
+      const state = getCheckInState(participant);
+      const members = state.familyList;
+      const attendingFamilyKeys = state.attendingKeys;
       if (!members.length) {
         familyHelp.hidden = true;
         const none = document.createElement('div');
@@ -352,7 +352,7 @@
         familyList.appendChild(none);
       } else {
         familyHelp.hidden = false;
-        familyHelp.textContent = participant.hasCheckedIn
+        familyHelp.textContent = state.hasCheckedIn
           ? 'The main participant has checked in. Select the remaining family members checking in now.'
           : 'Select the family members who are checking in.';
         members.forEach((member, index) => {
@@ -373,7 +373,7 @@
         });
       }
 
-      checkInButton.textContent = participant.hasCheckedIn
+      checkInButton.textContent = state.hasCheckedIn
         ? 'CHECK-IN REMAINING FAMILY'
         : 'CHECK-IN';
     }
@@ -393,6 +393,7 @@
           participantId: currentParticipant.participantId,
           family: JSON.stringify(selectedFamilyMembers)
         });
+        requireCurrentBackend(result);
 
         participantModal.hidden = true;
 
@@ -477,6 +478,39 @@
 
     function normalize(value) {
       return String(value || '').trim().toLocaleLowerCase().replace(/\s+/g, ' ');
+    }
+
+    function normalizeFamilyList(listValue, textValue) {
+      const source = Array.isArray(listValue)
+        ? listValue
+        : String(textValue || '').split(/\r?\n/);
+      return source.map(value => String(value || '').trim()).filter(Boolean);
+    }
+
+    function getCheckInState(participant) {
+      const familyList = normalizeFamilyList(participant.familyList, participant.familyMembers);
+      const attendingFamilyList = normalizeFamilyList(
+        participant.attendingFamilyList,
+        participant.attendingFamilyMembers
+      );
+      const attendingKeys = new Set(attendingFamilyList.map(normalize));
+      const hasCheckedIn = participant.hasCheckedIn == null
+        ? Boolean(participant.checkedIn)
+        : Boolean(participant.hasCheckedIn);
+      return {
+        familyList,
+        attendingKeys,
+        hasCheckedIn,
+        complete: hasCheckedIn && familyList.every(member => attendingKeys.has(normalize(member)))
+      };
+    }
+
+    function requireCurrentBackend(result) {
+      if (!result || result.buildVersion !== REQUIRED_BACKEND_BUILD) {
+        throw new Error(
+          'The old check-in backend is still active. Deploy the latest Code.gs and update APPS_SCRIPT_URL if the deployment URL changed.'
+        );
+      }
     }
   </script>
 </body>
