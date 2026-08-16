@@ -123,6 +123,7 @@
       cursor:pointer;
     }
     .family-option input { width:28px; height:28px; min-height:0; flex:0 0 auto; accent-color:var(--success); box-shadow:none; }
+    .family-option input:disabled { cursor:not-allowed; }
     .family-option span { font-size:19px; font-weight:800; line-height:1.35; }
     .no-family { padding:15px; border-radius:11px; background:#f9fafb; color:var(--muted); text-align:center; }
     .modal-actions { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:22px; }
@@ -339,6 +340,10 @@
       familyList.replaceChildren();
 
       const members = Array.isArray(participant.familyList) ? participant.familyList : [];
+      const attendingFamilyKeys = new Set(
+        (Array.isArray(participant.attendingFamilyList) ? participant.attendingFamilyList : [])
+          .map(normalize)
+      );
       if (!members.length) {
         familyHelp.hidden = true;
         const none = document.createElement('div');
@@ -347,6 +352,9 @@
         familyList.appendChild(none);
       } else {
         familyHelp.hidden = false;
+        familyHelp.textContent = participant.hasCheckedIn
+          ? 'The main participant has checked in. Select the remaining family members checking in now.'
+          : 'Select the family members who are checking in.';
         members.forEach((member, index) => {
           const label = document.createElement('label');
           label.className = 'family-option';
@@ -355,6 +363,8 @@
           checkbox.type = 'checkbox';
           checkbox.value = member;
           checkbox.id = 'family-member-' + index;
+          checkbox.checked = attendingFamilyKeys.has(normalize(member));
+          checkbox.disabled = checkbox.checked;
 
           const text = document.createElement('span');
           text.textContent = member;
@@ -362,6 +372,10 @@
           familyList.appendChild(label);
         });
       }
+
+      checkInButton.textContent = participant.hasCheckedIn
+        ? 'CHECK-IN REMAINING FAMILY'
+        : 'CHECK-IN';
     }
 
     async function submitCheckIn() {
@@ -459,6 +473,10 @@
 
     function setError(message) {
       document.getElementById('error').textContent = message || '';
+    }
+
+    function normalize(value) {
+      return String(value || '').trim().toLocaleLowerCase().replace(/\s+/g, ' ');
     }
   </script>
 </body>
